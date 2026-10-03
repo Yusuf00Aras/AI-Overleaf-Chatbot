@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+coverage/
+.DS_Store
+*.cookies.json
+.github/
+tests/
+PROJECT_STATUS.md
