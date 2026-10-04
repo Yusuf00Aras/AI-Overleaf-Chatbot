@@ -14,25 +14,25 @@ export async function run(adapter: BrowserOverleaf, baseUrl: string) {
   try {
     const tree = await step('get_project_tree', () => call('get_project_tree'), r => `root=${r.rootDocPath}, tracking=${r.trackChangesActive}`);
     const main: string = tree?.rootDocPath ?? 'main.tex';
-    let read = await step('read_file', () => call('read_file', { filePath: main }), r => `Protokoll=${r.protocol}, Version=${r.version}, ${r.content.length} Zeichen`);
-    if (read?.protocol !== 'history-ot') console.log(`INFO  Instanz liefert ${read?.protocol ?? 'nichts'} statt history-ot; History-OT-Pfad hier nicht prüfbar.`);
-    if (read) await step('write_file (untracked)', () => call('write_file', { filePath: main, revision: read.revision, content: read.content.replace('\\end{document}', 'History-OT Zeile\n\\end{document}') }), r => `verification=${r.verification}, Version=${r.version}`);
+    let read = await step('read_file', () => call('read_file', { filePath: main }), r => `protocol=${r.protocol}, version=${r.version}, ${r.content.length} chars`);
+    if (read?.protocol !== 'history-ot') console.log(`INFO  Instance returns ${read?.protocol ?? 'nothing'} instead of history-ot; history-OT path cannot be checked here.`);
+    if (read) await step('write_file (untracked)', () => call('write_file', { filePath: main, revision: read.revision, content: read.content.replace('\\end{document}', 'History-OT line\n\\end{document}') }), r => `verification=${r.verification}, version=${r.version}`);
     read = await call('read_file', { filePath: main }).catch(() => undefined);
-    if (read) await step('write_file (Ersetzen + Löschen)', () => call('write_file', { filePath: main, revision: read.revision, content: read.content.replace('History-OT Zeile', 'Ersetzt') }), r => `verification=${r.verification}`);
+    if (read) await step('write_file (replace + delete)', () => call('write_file', { filePath: main, revision: read.revision, content: read.content.replace('History-OT line', 'Replaced') }), r => `verification=${r.verification}`);
     read = await call('read_file', { filePath: main }).catch(() => undefined);
     if (read) await step('write_file (tracked)', async () => {
-      try { return `trackingVerified=${(await call('write_file', { filePath: main, revision: read.revision, content: read.content.replace('Ersetzt', 'Nachverfolgt'), writeMode: 'tracked' })).trackingVerified}`; }
+      try { return `trackingVerified=${(await call('write_file', { filePath: main, revision: read.revision, content: read.content.replace('Replaced', 'Tracked'), writeMode: 'tracked' })).trackingVerified}`; }
       catch (error) {
         const after = await call('read_file', { filePath: main });
-        return `abgelehnt (${describe(error).slice(0, 60)}), Dokument unverändert=${after.content === read.content}`;
+        return `rejected (${describe(error).slice(0, 60)}), document unchanged=${after.content === read.content}`;
       }
     }, m => m);
     await step('create_file + write_section', async () => {
-      await call('create_file', { filePath: 'kapitel.tex', content: '\\section{Eins}\nalt\n\\section{Zwei}\nbleibt\n' });
-      const sections = await call('get_sections', { filePath: 'kapitel.tex' });
-      await call('write_section', { filePath: 'kapitel.tex', revision: sections.revision, sectionId: sections.sections[0].sectionId, content: '\nneu\n' });
-      const after = await call('read_file', { filePath: 'kapitel.tex' });
-      return `Protokoll=${after.protocol}, ersetzt=${after.content.includes('\nneu\n')}, Rest=${after.content.includes('bleibt')}`;
+      await call('create_file', { filePath: 'chapter.tex', content: '\\section{One}\nold\n\\section{Two}\nstays\n' });
+      const sections = await call('get_sections', { filePath: 'chapter.tex' });
+      await call('write_section', { filePath: 'chapter.tex', revision: sections.revision, sectionId: sections.sections[0].sectionId, content: '\nnew\n' });
+      const after = await call('read_file', { filePath: 'chapter.tex' });
+      return `protocol=${after.protocol}, replaced=${after.content.includes('\nnew\n')}, rest=${after.content.includes('stays')}`;
     }, m => m);
   } finally {
     await step('trash', () => call('manage_project', { action: 'trash', confirmName: name }), r => `confirmed=${r.confirmed}`);

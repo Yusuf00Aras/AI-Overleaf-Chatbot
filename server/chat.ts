@@ -41,10 +41,10 @@ export function extractDownloads(output: unknown, downloads: Download[], deliver
     const name = typeof record.filePath === 'string' ? record.filePath.split('/').at(-1)! : typeof record.name === 'string' ? record.name : 'download';
     const mimeType = typeof record.mimeType === 'string' ? record.mimeType : 'application/octet-stream';
     if (deliver) {
-      if (downloads.length >= 24 || downloads.reduce((size, item) => size + Buffer.byteLength(item.dataBase64, 'base64'), bytes.length) > 3 * 512 * 1024) throw new Error('Downloadlimit erreicht.');
+      if (downloads.length >= 24 || downloads.reduce((size, item) => size + Buffer.byteLength(item.dataBase64, 'base64'), bytes.length) > 3 * 512 * 1024) throw new Error('Download limit reached.');
       downloads.push({ name, mimeType, dataBase64: record.dataBase64 });
       metadata.download = { name, mimeType, bytes: bytes.length, availableToUser: true };
-    } else metadata.download = { name, mimeType, bytes: bytes.length, availableToUser: false, note: 'MCP-Gateway liefert keine Binärdaten. Datei in Overleaf oder über die Chat-Oberfläche herunterladen.' };
+    } else metadata.download = { name, mimeType, bytes: bytes.length, availableToUser: false, note: 'The MCP gateway does not deliver binary data. Download the file in Overleaf or through the chat UI.' };
   }
   for (const [key, value] of Object.entries(record)) {
     if (['dataBase64', 'attachmentId', 'localPath', 'cookies', 'cookie', 'csrf', 'csrfToken', 'token', 'session', 'apiKey'].includes(key)) continue;
@@ -63,7 +63,7 @@ export function boundOutput(serialized: string, max = MAX_TOOL_OUTPUT_CHARS): st
     else omitted.push(key);
   }
   return JSON.stringify({ ...kept, omittedFields: omitted, outputChars: serialized.length,
-    note: `LIMIT_EXCEEDED: Ergebnis zu groß für den KI-Kontext (Grenze ${max} Zeichen). Große Felder ausgelassen; Aktion selbst ist davon unberührt. Abschnittsweise lesen.` });
+    note: `LIMIT_EXCEEDED: Result too large for the AI context (limit ${max} characters). Large fields omitted; the action itself is unaffected. Read by section.` });
 }
 
 export async function chat(input: z.infer<typeof chatSchema>, adapter: OverleafAdapter, signal?: AbortSignal,
@@ -113,13 +113,13 @@ export async function chat(input: z.infer<typeof chatSchema>, adapter: OverleafA
       ...(input.endpoint?.maxOutputTokens ? { max_completion_tokens: input.endpoint.maxOutputTokens } : {}),
     }, { signal });
     const message = response.choices[0]?.message;
-    if (!message) throw new Error('Leere KI-Antwort.');
+    if (!message) throw new Error('Empty AI response.');
     if (typeof message.content === 'string') message.content = redact(message.content);
     for (const call of message.tool_calls ?? []) if (call.type === 'function') call.function.arguments = redact(call.function.arguments);
     messages.push(message);
-    if (!message.tool_calls?.length) return { reply: redact(message.content ?? 'Fertig.'), activity, downloads, proposals };
+    if (!message.tool_calls?.length) return { reply: redact(message.content ?? 'Done.'), activity, downloads, proposals };
     for (const call of message.tool_calls) {
-      if (call.type !== 'function') throw new Error('Nicht unterstützter Werkzeugaufruf.');
+      if (call.type !== 'function') throw new Error('Unsupported tool call.');
       let output: unknown;
       let ok = true;
       // Abort only between tool calls; a started write is never cancelled mid-way.
@@ -127,13 +127,13 @@ export async function chat(input: z.infer<typeof chatSchema>, adapter: OverleafA
       try { output = extractDownloads(await session.call(call.function.name, JSON.parse(call.function.arguments)), downloads); }
       catch (error) {
         ok = false;
-        output = { error: safeMessage(error, 'Werkzeug fehlgeschlagen. Verbindung, Pfad, Schreibfreigabe und Revision prüfen. Fehlgeschlagene Schreibaktionen nicht wiederholen.') };
+        output = { error: safeMessage(error, 'Tool failed. Check the connection, path, write permission and revision. Do not retry failed writes.') };
       }
       activity.push({ tool: call.function.name, ok });
       messages.push({ role: 'tool', tool_call_id: call.id, content: boundOutput(redact(JSON.stringify(output))) });
     }
   }
-  return { reply: 'Werkzeuglimit erreicht. Bitte das Dokument im Overleaf-Browser prüfen.', activity, downloads, proposals };
+  return { reply: 'Tool limit reached. Please check the document in the Overleaf browser.', activity, downloads, proposals };
   } catch (error) {
     // Proposals the user can never see must not stay executable.
     for (const proposal of proposals) store?.discard(proposal.id);

@@ -16,7 +16,7 @@ const parse = (result: unknown) => JSON.parse(text(result));
 export async function run(adapter: BrowserOverleaf, baseUrl: string) {
   const { step, summary } = stepper(1500);
   const name = `Studio-Livetest MCPWrite ${Date.now().toString(36)}`;
-  const created = await step('create_project (Wegwerf)', () => new ToolSession(adapter, { baseUrl }, false, true).call('create_project', { name }) as Promise<any>, r => r.projectId);
+  const created = await step('create_project (disposable)', () => new ToolSession(adapter, { baseUrl }, false, true).call('create_project', { name }) as Promise<any>, r => r.projectId);
   if (!created) { console.log(summary()); return; }
   const projectId: string = created.projectId;
   const token = randomBytes(24).toString('hex');
@@ -33,29 +33,29 @@ export async function run(adapter: BrowserOverleaf, baseUrl: string) {
     await once(socket, 'connect');
     socket.write(`${JSON.stringify({ auth: token })}\n`);
     await client.connect(new SocketTransport(socket));
-    await step('connect_overleaf (Projekt)', () => call('connect_overleaf', { baseUrl, projectId }), () => 'verbunden');
+    await step('connect_overleaf (project)', () => call('connect_overleaf', { baseUrl, projectId }), () => 'connected');
     // Mutation tools are only listed once a project is selected.
-    await step('listTools: write_file angeboten', async () => { const names = (await client.listTools()).tools.map(t => t.name); if (!names.includes('write_file')) throw new Error('write_file fehlt trotz allowWrites'); if (names.includes('manage_project')) throw new Error('manage_project ohne Freigabe angeboten'); return `${names.length} Werkzeuge`; }, m => m);
-    const read = await step('read_file', () => call('read_file', { projectId, filePath: 'main.tex' }), r => `${r.content.length} Zeichen, ${r.protocol}`);
+    await step('listTools: write_file offered', async () => { const names = (await client.listTools()).tools.map(t => t.name); if (!names.includes('write_file')) throw new Error('write_file missing despite allowWrites'); if (names.includes('manage_project')) throw new Error('manage_project offered without approval'); return `${names.length} tools`; }, m => m);
+    const read = await step('read_file', () => call('read_file', { projectId, filePath: 'main.tex' }), r => `${r.content.length} chars, ${r.protocol}`);
     if (read) {
-      await step('write_file mit falscher Revision abgelehnt', async () => {
-        try { await call('write_file', { projectId, filePath: 'main.tex', revision: 'falsch', content: 'x' }); } catch (error) { return (error as Error).message.slice(0, 60); }
-        throw new Error('Falsche Revision angenommen');
+      await step('write_file with wrong revision rejected', async () => {
+        try { await call('write_file', { projectId, filePath: 'main.tex', revision: 'wrong', content: 'x' }); } catch (error) { return (error as Error).message.slice(0, 60); }
+        throw new Error('Wrong revision accepted');
       }, m => m);
-      const written = await step('write_file (Betreiber-Schreibmodus)', () => call('write_file', { projectId, filePath: 'main.tex', revision: read.revision, content: `${read.content}% MCP-Schreibtest\n` }), r => `verification=${r.verification}`);
-      if (written) await step('erneutes Lesen bestätigt Änderung', async () => {
+      const written = await step('write_file (operator write mode)', () => call('write_file', { projectId, filePath: 'main.tex', revision: read.revision, content: `${read.content}% MCP write test\n` }), r => `verification=${r.verification}`);
+      if (written) await step('re-read confirms change', async () => {
         const after = await call('read_file', { projectId, filePath: 'main.tex' });
-        if (!after.content.includes('MCP-Schreibtest')) throw new Error('Änderung nicht sichtbar');
+        if (!after.content.includes('MCP write test')) throw new Error('Change not visible');
         return after.revision as string;
-      }, () => 'Änderung sichtbar');
-      await step('verbrauchte Revision erneut abgelehnt', async () => {
-        try { await call('write_file', { projectId, filePath: 'main.tex', revision: read.revision, content: 'veraltet' }); } catch (error) { return (error as Error).message.slice(0, 60); }
-        throw new Error('Veraltete Revision angenommen');
+      }, () => 'change visible');
+      await step('used revision rejected again', async () => {
+        try { await call('write_file', { projectId, filePath: 'main.tex', revision: read.revision, content: 'stale' }); } catch (error) { return (error as Error).message.slice(0, 60); }
+        throw new Error('Stale revision accepted');
       }, m => m);
     }
-    await step('Verwaltung ohne Betreiberfreigabe nicht angeboten', async () => {
+    await step('management not offered without operator approval', async () => {
       const result = await client.callTool({ name: 'manage_project', arguments: { projectId, action: 'trash', confirmName: name } }) as ToolResult;
-      if (!result.isError) throw new Error('manage_project ohne Freigabe ausgeführt');
+      if (!result.isError) throw new Error('manage_project executed without approval');
       return text(result).slice(0, 60);
     }, m => m);
   } finally {

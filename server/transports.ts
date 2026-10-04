@@ -13,12 +13,12 @@ export class LineDecoder {
     const lines: string[] = [];
     let end: number;
     while ((end = this.pending.indexOf(10)) !== -1) {
-      if (end > MAX_FRAME) throw new Error('Nachricht zu groß.');
+      if (end > MAX_FRAME) throw new Error('Message too large.');
       const line = this.pending.subarray(0, end).toString('utf8').replace(/\r$/, '');
       this.pending = this.pending.subarray(end + 1);
       if (line) lines.push(line);
     }
-    if (this.pending.length > MAX_FRAME) throw new Error('Nachricht zu groß.');
+    if (this.pending.length > MAX_FRAME) throw new Error('Message too large.');
     return lines;
   }
 }
@@ -39,7 +39,7 @@ export class SocketTransport implements Transport {
   }
   async start(): Promise<void> {
     this.socket.on('close', () => this.onclose?.());
-    this.socket.on('error', () => this.onerror?.(new Error('Transportverbindung fehlgeschlagen.')));
+    this.socket.on('error', () => this.onerror?.(new Error('Transport connection failed.')));
     const socket = this.socket;
     if (socket instanceof WebSocket) {
       socket.on('message', (data, binary) => {
@@ -68,14 +68,14 @@ export class SocketTransport implements Transport {
   private receive(text: string): void {
     let message: JSONRPCMessage;
     try {
-      if (Buffer.byteLength(text) > MAX_FRAME) throw new Error('Nachricht zu groß.');
+      if (Buffer.byteLength(text) > MAX_FRAME) throw new Error('Message too large.');
       message = JSONRPCMessageSchema.parse(JSON.parse(text));
-    } catch { this.onerror?.(new Error('Ungültige JSON-RPC-Nachricht.')); void this.close(); return; }
+    } catch { this.onerror?.(new Error('Invalid JSON-RPC message.')); void this.close(); return; }
     this.onmessage?.(message);
   }
   async send(message: JSONRPCMessage): Promise<void> {
     const text = JSON.stringify(message);
-    if (Buffer.byteLength(text) > MAX_FRAME) throw new Error('Ausgehende Nachricht zu groß.');
+    if (Buffer.byteLength(text) > MAX_FRAME) throw new Error('Outgoing message too large.');
     const socket = this.socket;
     await new Promise<void>((resolve, reject) => {
       if (socket instanceof WebSocket) socket.send(text, error => error ? reject(error) : resolve());

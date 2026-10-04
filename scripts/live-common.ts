@@ -3,7 +3,7 @@ import { UserError } from '../server/policy.js';
 
 export function describe(error: unknown) {
   if (error instanceof UserError) return error.message;
-  return `${error instanceof Error ? error.name : 'Fehler'}: ${String(error instanceof Error ? error.message : error).split('\n')[0]!.slice(0, 200)}`;
+  return `${error instanceof Error ? error.name : 'Error'}: ${String(error instanceof Error ? error.message : error).split('\n')[0]!.slice(0, 200)}`;
 }
 
 /** Prints only metadata and pass/fail per step; never document contents or auth data. */
@@ -22,7 +22,7 @@ export function stepper(pauseMs = 1500) {
       return undefined;
     }
   }
-  return { step, summary: () => `Ergebnis: ${ok}/${total} Schritte erfolgreich.` };
+  return { step, summary: () => `Result: ${ok}/${total} steps succeeded.` };
 }
 
 export async function waitReady(adapter: BrowserOverleaf, scope: { baseUrl: string; projectId?: string }, timeoutMs: number) {
@@ -32,5 +32,5 @@ export async function waitReady(adapter: BrowserOverleaf, scope: { baseUrl: stri
     if (status.ready) return status.message;
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
-  throw new UserError('Zeitüberschreitung beim Warten auf Anmeldung/Editor.');
+  throw new UserError('Timed out waiting for login/editor.');
 }

@@ -2,7 +2,7 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "Studio: Entwicklung starten",
+			"label": "Studio: Start development",
 			"type": "shell",
 			"command": "npm",
 			"args": [
@@ -13,7 +13,7 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Studio: Alles prüfen",
+			"label": "Studio: Check all",
 			"type": "shell",
 			"command": "npm",
 			"args": [

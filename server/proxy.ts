@@ -35,10 +35,10 @@ export function proxyTunnel(proxy: string) {
     const request = (url.protocol === 'https:' ? https : http).request({ host: url.hostname, port: url.port || (url.protocol === 'https:' ? 443 : 80),
       method: 'CONNECT', path: target, headers: { host: target, ...auth }, agent: false });
     request.once('connect', (response, socket) => {
-      if (response.statusCode !== 200) { socket.destroy(); callback(new Error('Proxy-Tunnel abgelehnt.')); return; }
+      if (response.statusCode !== 200) { socket.destroy(); callback(new Error('Proxy tunnel rejected.')); return; }
       callback(null, tls.connect({ ...options, path: undefined, socket, servername: options.servername ?? (isIP(options.host) ? undefined : options.host) }));
     });
-    request.once('error', () => callback(new Error('Proxy nicht erreichbar.')));
+    request.once('error', () => callback(new Error('Proxy unreachable.')));
     request.end();
     return undefined;
   };

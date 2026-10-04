@@ -6,21 +6,21 @@ import { describe, stepper } from './live-common.js';
 export async function purgeCheck(adapter: BrowserOverleaf, baseUrl: string) {
   const { step, summary } = stepper();
   const listAll = async () => (await new ToolSession(adapter, { baseUrl }, false).call('list_projects', { includeArchived: true, includeTrashed: true, limit: 200 }) as any).projects as any[];
-  const targets = await step('find trashed Studio-Livetest projects', async () => (await listAll()).filter(p => p.trashed && p.name.startsWith('Studio-Livetest')), r => `${r.length} Projekte`);
+  const targets = await step('find trashed Studio-Livetest projects', async () => (await listAll()).filter(p => p.trashed && p.name.startsWith('Studio-Livetest')), r => `${r.length} projects`);
   for (const [index, project] of (targets ?? []).entries()) {
     const session = new ToolSession(adapter, { baseUrl, projectId: project.projectId }, false, false, { allowManageProjects: true, allowDestructive: true });
     if (index === 0) await step('delete with wrong confirmName refused', async () => {
-      try { await session.call('manage_project', { projectId: project.projectId, action: 'delete', confirmName: `${project.name} falsch` }); }
+      try { await session.call('manage_project', { projectId: project.projectId, action: 'delete', confirmName: `${project.name} wrong` }); }
       catch (error) { return describe(error).slice(0, 80); }
-      throw new Error('Löschen ohne exakte Bestätigung ausgeführt');
+      throw new Error('Deletion executed without exact confirmation');
     }, m => m);
     await step(`delete ${project.projectId}`, () => session.call('manage_project', { projectId: project.projectId, action: 'delete', confirmName: project.name }) as Promise<any>, r => `confirmed=${r.confirmed}`);
   }
   const ids = new Set((targets ?? []).map(p => p.projectId));
   await step('verify gone, others untouched', async () => {
     const remaining = await listAll();
-    if (remaining.some(p => ids.has(p.projectId))) throw new Error('Projekt noch vorhanden');
-    return `${remaining.length} Projekte übrig: ${remaining.map(p => p.name).join(', ')}`;
+    if (remaining.some(p => ids.has(p.projectId))) throw new Error('Project still exists');
+    return `${remaining.length} projects left: ${remaining.map(p => p.name).join(', ')}`;
   }, m => m);
   console.log(summary());
 }

@@ -99,7 +99,7 @@ export function parseSections(text: string): LatexSection[] {
 
 export function sectionContent(text: string, sectionId: string): LatexSection & { content: string } {
   const section = parseSections(text).find(value => value.sectionId === sectionId);
-  if (!section) throw new UserError('SECTION_NOT_FOUND: Abschnitt in dieser Revision nicht gefunden.');
+  if (!section) throw new UserError('SECTION_NOT_FOUND: Section not found in this revision.');
   return { ...section, content: text.slice(section.bodyStart, section.bodyEnd) };
 }
 

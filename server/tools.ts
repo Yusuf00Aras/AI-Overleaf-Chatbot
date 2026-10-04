@@ -6,11 +6,11 @@ import { sectionContent } from './sections.js';
 
 const MAX_BYTES = 512 * 1024;
 const id = z.string().regex(/^[a-fA-F0-9]{24}$/);
-const path = z.string().min(1).max(300).refine(value => { try { projectPath(value); return true; } catch { return false; } }, 'Ungültiger projekt-relativer Dateipfad.');
+const path = z.string().min(1).max(300).refine(value => { try { projectPath(value); return true; } catch { return false; } }, 'Invalid project-relative file path.');
 const folder = z.union([path, z.literal('')]);
-const text = z.string().max(500_000).refine(value => Buffer.byteLength(value) <= MAX_BYTES, 'Text größer als 512 KiB.');
+const text = z.string().max(500_000).refine(value => Buffer.byteLength(value) <= MAX_BYTES, 'Text larger than 512 KiB.');
 const revision = z.string().min(1).max(2048);
-const name = z.string().min(1).max(150).refine(value => projectNameSchema.safeParse(value).success && !['.', '..'].includes(value.trim()), 'Ungültiger Name.');
+const name = z.string().min(1).max(150).refine(value => projectNameSchema.safeParse(value).success && !['.', '..'].includes(value.trim()), 'Invalid name.');
 const position = z.object({ line: z.number().int().min(1), column: z.number().int().min(1) }).strict();
 const project = { projectId: id };
 const file = { ...project, filePath: path };
@@ -76,8 +76,8 @@ export const toolDefinitions = (Object.keys(schemas) as ToolName[]).map(name => 
 export const canonicalToolDefinitions = toolDefinitions.filter(tool => (CAPABILITIES as readonly string[]).includes(tool.name));
 export const attachmentSchema = z.object({ id: z.string().min(1).max(100), name, dataBase64: z.string().max(4 * Math.ceil(MAX_BYTES / 3)).refine(value => {
   try { decodeBinary(value); return true; } catch { return false; }
-}, 'Ungültiges Base64 oder Anhang größer als 512 KiB.') }).strict();
-export const attachmentsSchema = z.array(attachmentSchema).max(3).refine(items => new Set(items.map(item => item.id)).size === items.length, 'Anhang-IDs müssen eindeutig sein.');
+}, 'Invalid Base64 or attachment larger than 512 KiB.') }).strict();
+export const attachmentsSchema = z.array(attachmentSchema).max(3).refine(items => new Set(items.map(item => item.id)).size === items.length, 'Attachment IDs must be unique.');
 export interface ProposalSummary { title: string; target: string; destructive: boolean; diff?: string; truncated?: boolean }
 export interface Proposal { tool: string; args: Record<string, unknown>; summary: ProposalSummary }
 export interface ToolOptions {
@@ -119,20 +119,20 @@ export class ToolSession {
     this.options = { ...options, attachments: attachmentsSchema.parse(options.attachments ?? []).map(item => ({ ...item })) };
   }
   private selectedScope() {
-    if (!this.scope.projectId) throw new UserError('Zuerst ein Projekt ausdrücklich auswählen.');
+    if (!this.scope.projectId) throw new UserError('Select a project explicitly first.');
     return scopeSchema.parse(this.scope);
   }
   private requireRead(projectId: string, filePath: string, revision: unknown, allowSection = false) {
     const read = this.reads.get(`${projectId}:${filePath}`);
-    if (!read || read.revision !== revision) throw new UserError('Vor der Änderung muss diese Datei im ausgewählten Projekt in dieser Sitzung gelesen und die zurückgegebene Revision unverändert übergeben werden.');
-    if (read.sectionOnly && !allowSection) throw new UserError('Dokument wurde nur abschnittsweise gelesen. Nur write_section mit dieser Revision erlaubt.');
+    if (!read || read.revision !== revision) throw new UserError('Before changing, this file must be read in the selected project in this session, and the returned revision must be passed unchanged.');
+    if (read.sectionOnly && !allowSection) throw new UserError('Document was only read by section. Only write_section with this revision is allowed.');
     return read;
   }
   private invalidate(projectId: string) {
     for (const key of this.reads.keys()) if (key.startsWith(`${projectId}:`)) this.reads.delete(key);
   }
   private async execute(name: string, args: Record<string, unknown>): Promise<unknown> {
-    if (!this.adapter.execute) throw new UserError('PROTOCOL_UNSUPPORTED: Vollständige API im Adapter nicht verfügbar; nur Legacy-Lesen/Schreiben/Compile und Projektliste/Erstellung unterstützt.');
+    if (!this.adapter.execute) throw new UserError('PROTOCOL_UNSUPPORTED: Full API not available in the adapter; only legacy read/write/compile and project list/creation are supported.');
     return this.adapter.execute(this.scope.baseUrl, name, args);
   }
   private async read(projectId: string, filePath: string) {
@@ -147,14 +147,14 @@ export class ToolSession {
       this.reads.set(`${projectId}:${filePath}`, { revision: parsed.revision, sectionOnly: true });
       const { content: _omitted, ...rest } = parsed;
       return { ...rest, contentOmitted: true, contentChars: parsed.content.length,
-        message: `LIMIT_EXCEEDED: Dokument (${parsed.content.length} Zeichen) zu groß für den KI-Kontext (Grenze ${max}). Mit get_sections/get_section_content abschnittsweise lesen; nur write_section ist erlaubt.` };
+        message: `LIMIT_EXCEEDED: Document (${parsed.content.length} characters) too large for the AI context (limit ${max}). Read by section with get_sections/get_section_content; only write_section is allowed.` };
     }
     this.reads.set(`${projectId}:${filePath}`, { revision: parsed.revision, content: parsed.content });
     return result;
   }
   private fullRead(projectId: string, filePath: string) {
     const read = this.reads.get(`${projectId}:${filePath}`);
-    if (read?.content === undefined) throw new UserError('Dokument zu groß oder nicht vollständig gelesen; diese Aktion ist nicht verfügbar.');
+    if (read?.content === undefined) throw new UserError('Document too large or not fully read; this action is not available.');
     return { revision: read.revision, content: read.content };
   }
   private needsConfirmation(name: string, args: Record<string, unknown>) {
@@ -167,39 +167,39 @@ export class ToolSession {
       let before = prior?.content === undefined ? undefined : sectionContent(prior.content, args.sectionId as string).content;
       if (before === undefined) {
         const current = z.object({ revision, content: z.string() }).passthrough().parse(await this.execute('get_section_content', { projectId: args.projectId, filePath: args.filePath, sectionId: args.sectionId }));
-        if (current.revision !== args.revision) throw new UserError('REVISION_CONFLICT: Dokument seit dem Lesen geändert. Erneut lesen.');
+        if (current.revision !== args.revision) throw new UserError('REVISION_CONFLICT: Document changed since it was read. Read it again.');
         before = current.content;
       }
       const diff = previewDiff(before, args.content as string);
-      return { title: `Abschnitt ${String(args.sectionId)} ersetzen${args.writeMode === 'tracked' ? ' (nachverfolgt)' : ''}`, target, destructive: false, diff: diff.snippet, truncated: diff.truncated };
+      return { title: `Replace section ${String(args.sectionId)}${args.writeMode === 'tracked' ? ' (tracked)' : ''}`, target, destructive: false, diff: diff.snippet, truncated: diff.truncated };
     }
     if (['write_file', 'write_document'].includes(name)) {
       const diff = previewDiff(prior!.content!, args.content as string);
-      return { title: `Datei ändern${args.writeMode === 'tracked' ? ' (nachverfolgt)' : ''}`, target, destructive: false, diff: diff.snippet, truncated: diff.truncated };
+      return { title: `Change file${args.writeMode === 'tracked' ? ' (tracked)' : ''}`, target, destructive: false, diff: diff.snippet, truncated: diff.truncated };
     }
-    if (name === 'upload_file') return { title: `Datei mit Anhang überschreiben (${decodeBinary(args.dataBase64).length} Bytes)`, target, destructive: true };
-    if (name === 'manage_entity') return { title: 'Datei/Ordner löschen', target, destructive: true };
-    return { title: args.action === 'delete' ? `Projekt „${String(args.confirmName)}“ endgültig löschen` : `Projekt „${String(args.confirmName)}“ in den Papierkorb verschieben`, target, destructive: true };
+    if (name === 'upload_file') return { title: `Overwrite file with attachment (${decodeBinary(args.dataBase64).length} bytes)`, target, destructive: true };
+    if (name === 'manage_entity') return { title: 'Delete file/folder', target, destructive: true };
+    return { title: args.action === 'delete' ? `Permanently delete project “${String(args.confirmName)}”` : `Move project “${String(args.confirmName)}” to trash`, target, destructive: true };
   }
   private async proposeOrExecute(name: string, args: Record<string, unknown>, prior?: { content?: string }, run: () => Promise<unknown> = () => this.execute(name, args)) {
     if (!this.options.propose || !this.needsConfirmation(name, args)) return run();
     const summary = await this.summarize(name, args, prior);
     const proposalId = this.options.propose({ tool: name, args: { ...args }, summary });
     return { pendingUserConfirmation: true, proposalId, ...summary, executed: false,
-      message: 'Noch NICHT ausgeführt. Der Nutzer muss diese Änderung in der Oberfläche bestätigen. Nicht erneut vorschlagen oder wiederholen; vor weiteren Änderungen an dieser Datei Bestätigung abwarten und neu lesen.' };
+      message: 'NOT executed yet. The user must confirm this change in the UI. Do not propose it again or retry; before further changes to this file, wait for confirmation and read it again.' };
   }
   async call(name: string, input: unknown): Promise<unknown> {
-    if (!Object.hasOwn(schemas, name)) throw new UserError('Unbekanntes Werkzeug.');
-    if (creators.has(name) && !this.allowCreateProjects) throw new UserError('Projekterstellung nicht freigegeben.');
-    if (writers.has(name) && !this.allowWrites) throw new UserError('Schreibzugriff nicht freigegeben.');
-    if (commenters.has(name) && !this.options.allowComments) throw new UserError('Kommentare nicht freigegeben.');
-    if (name === 'manage_project' && !this.options.allowManageProjects) throw new UserError('Projektverwaltung nicht freigegeben.');
+    if (!Object.hasOwn(schemas, name)) throw new UserError('Unknown tool.');
+    if (creators.has(name) && !this.allowCreateProjects) throw new UserError('Project creation is not permitted.');
+    if (writers.has(name) && !this.allowWrites) throw new UserError('Write access is not permitted.');
+    if (commenters.has(name) && !this.options.allowComments) throw new UserError('Comments are not permitted.');
+    if (name === 'manage_project' && !this.options.allowManageProjects) throw new UserError('Project management is not permitted.');
     const args = schemas[name as ToolName].parse(input) as Record<string, unknown>;
     for (const field of ['projectId', 'sourceProjectId']) if (args[field] !== undefined) args[field] = projectIdSchema.parse(args[field]);
     for (const field of ['name', 'newName', 'filename']) if (args[field] !== undefined) args[field] = projectNameSchema.parse(args[field]);
     if (mutations.has(name)) {
       const selected = this.selectedScope();
-      if (args.projectId !== undefined && args.projectId !== selected.projectId) throw new UserError('Änderungen nur im ausdrücklich ausgewählten Projekt erlaubt.');
+      if (args.projectId !== undefined && args.projectId !== selected.projectId) throw new UserError('Changes are only allowed in the explicitly selected project.');
     }
     if (name === 'describe_capabilities') return { canonicalTools: CAPABILITIES, support: [
       { feature: 'Canonical 24 tools', supported: !!this.adapter.execute, caveat: 'Private API; instance/protocol dependent. No mutation retries.' },
@@ -224,7 +224,7 @@ export class ToolSession {
       return { projects: projects.slice(0, Number(args.limit ?? 50)), totalMatched: projects.length, totalProjects: result.projects.length, caveat: 'Legacy catalog: active projects only; archived/trashed/lastUpdated unavailable.' };
     }
     if (creators.has(name)) {
-      if (this.creationUsed) throw new UserError('Projekterstellung bereits verbraucht. Projektliste prüfen; nicht erneut versuchen.');
+      if (this.creationUsed) throw new UserError('Project creation already used. Check the project list; do not retry.');
       this.creationUsed = true;
       // Report missing/invalid user attachments explicitly, while still consuming the attempt.
       if (name === 'import_project_zip') this.resolveAttachment(args, true);
@@ -232,7 +232,7 @@ export class ToolSession {
         if (this.adapter.execute) return await this.execute(name, args);
         if (name !== 'create_project' || (args.template !== undefined && args.template !== 'blank')) throw new UserError('PROTOCOL_UNSUPPORTED');
         return await this.adapter.createProject(this.scope.baseUrl, args.name as string);
-      } catch { throw new UserError('Projekterstellung nicht bestätigt. Projektliste prüfen; nicht erneut versuchen.'); }
+      } catch { throw new UserError('Project creation not confirmed. Check the project list; do not retry.'); }
     }
     if (name === 'read_document') return this.read((args.projectId as string | undefined) ?? this.selectedScope().projectId, args.filePath as string);
     if (name === 'read_file') return this.read(args.projectId as string, args.filePath as string);
@@ -244,14 +244,14 @@ export class ToolSession {
       if (this.adapter.execute) return this.proposeOrExecute('write_file', canonical, prior);
       return this.proposeOrExecute('write_document', canonical, prior, async () => {
         const result = await this.adapter.write(scope, filePath, args.content as string, args.revision as string);
-        return { filePath: result.filePath, revision: result.revision, message: 'Editor-Inhalt geändert. Synchronisierung in Overleaf prüfen.' };
+        return { filePath: result.filePath, revision: result.revision, message: 'Editor content changed. Check synchronization in Overleaf.' };
       });
     }
     if (name === 'compile_document') return this.adapter.execute ? this.execute('compile_project', { projectId: this.selectedScope().projectId }) : this.adapter.compile(this.selectedScope());
     if (name === 'validate_latex') {
       await this.read(args.projectId as string, args.filePath as string);
       const read = this.fullRead(args.projectId as string, args.filePath as string);
-      return { projectId: args.projectId, filePath: args.filePath, revision: read.revision, ...validateLatex(read.content), caveat: 'Lokale statische Prüfung, keine Kompilierung; Pakete, Includes und Zitate nicht verifiziert.' };
+      return { projectId: args.projectId, filePath: args.filePath, revision: read.revision, ...validateLatex(read.content), caveat: 'Local static check, not a compilation; packages, includes and citations not verified.' };
     }
     if (name === 'preview_edit') {
       const projectId = args.projectId as string, filePath = args.filePath as string;
@@ -260,28 +260,28 @@ export class ToolSession {
       const fresh = this.fullRead(projectId, filePath);
       if (fresh.revision !== prior.revision || fresh.content !== prior.content) {
         this.reads.delete(`${projectId}:${filePath}`);
-        throw new UserError('REVISION_CONFLICT: Vorschau veraltet; Datei erneut lesen.');
+        throw new UserError('REVISION_CONFLICT: Preview outdated; read the file again.');
       }
       return { projectId, filePath, revision: fresh.revision, ...previewDiff(fresh.content, args.content as string), writing: false };
     }
     if (name === 'manage_project') {
-      if (['trash', 'delete'].includes(args.action as string) && !this.options.allowDestructive) throw new UserError('Destruktive Aktionen nicht freigegeben.');
-      if (args.action === 'rename' && !args.newName) throw new UserError('newName erforderlich.');
+      if (['trash', 'delete'].includes(args.action as string) && !this.options.allowDestructive) throw new UserError('Destructive actions are not permitted.');
+      if (args.action === 'rename' && !args.newName) throw new UserError('newName is required.');
       if (['trash', 'archive', 'delete'].includes(args.action as string)) {
-        if (args.confirmName === undefined) throw new UserError('CONFIRMATION_MISMATCH: Aktuellen Projektnamen exakt bestätigen.');
+        if (args.confirmName === undefined) throw new UserError('CONFIRMATION_MISMATCH: Confirm the current project name exactly.');
         const result = z.object({ projects: z.array(z.object({ projectId: id, name: z.string() }).passthrough()) }).passthrough().parse(await this.execute('list_projects', { includeArchived: true, includeTrashed: true, limit: 200 }));
         const current = result.projects.find(p => p.projectId.toLowerCase() === args.projectId);
-        if (!current || args.confirmName !== current.name) throw new UserError('CONFIRMATION_MISMATCH: Aktuellen Projektnamen exakt bestätigen.');
+        if (!current || args.confirmName !== current.name) throw new UserError('CONFIRMATION_MISMATCH: Confirm the current project name exactly.');
       }
     }
     if (name === 'manage_entity') {
-      if (args.action === 'delete' && (!this.options.allowDestructive || args.confirmPath !== args.path)) throw new UserError('Destruktive Aktionen benötigen Freigabe und exakten confirmPath.');
-      if (args.action === 'rename' && !args.newName) throw new UserError('newName erforderlich.');
-      if (args.action === 'move' && args.destinationFolderPath === undefined) throw new UserError('destinationFolderPath erforderlich.');
+      if (args.action === 'delete' && (!this.options.allowDestructive || args.confirmPath !== args.path)) throw new UserError('Destructive actions require permission and an exact confirmPath.');
+      if (args.action === 'rename' && !args.newName) throw new UserError('newName is required.');
+      if (args.action === 'move' && args.destinationFolderPath === undefined) throw new UserError('destinationFolderPath is required.');
     }
-    if (name === 'update_project_settings' && Object.keys(args).length === 1) throw new UserError('Mindestens eine Einstellung erforderlich.');
+    if (name === 'update_project_settings' && Object.keys(args).length === 1) throw new UserError('At least one setting is required.');
     if (name === 'upload_file') {
-      if (args.overwrite && (!this.options.allowDestructive || args.confirmPath !== args.filePath)) throw new UserError('Überschreiben benötigt destruktive Freigabe und exakten confirmPath.');
+      if (args.overwrite && (!this.options.allowDestructive || args.confirmPath !== args.filePath)) throw new UserError('Overwriting requires destructive permission and an exact confirmPath.');
       this.resolveAttachment(args);
     }
     if (revisionMutations.has(name)) {
@@ -302,11 +302,11 @@ export class ToolSession {
   }
   private resolveAttachment(args: Record<string, unknown>, zip = false) {
     const attachment = this.options.attachments?.find(item => item.id === args.attachmentId);
-    if (!attachment) throw new UserError('Kein Benutzer-Anhang verfügbar. Gateway unterstützt keine Anhang-Uploads.');
+    if (!attachment) throw new UserError('No user attachment available. The gateway does not support attachment uploads.');
     if (zip) {
       args.filename ??= attachment.name;
       const bytes = decodeBinary(attachment.dataBase64);
-      if (!/\.zip$/i.test(args.filename as string) || bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new UserError('ZIP-Anhang erforderlich.');
+      if (!/\.zip$/i.test(args.filename as string) || bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new UserError('ZIP attachment required.');
     }
     delete args.attachmentId;
     args.dataBase64 = attachment.dataBase64;
@@ -346,21 +346,21 @@ export function validateLatex(content: string) {
       index += token[0].length - 1;
       if (token[3]) {
         const end = content.indexOf(token[3], index + 1), newline = content.indexOf('\n', index + 1);
-        if (end < 0 || (newline >= 0 && end > newline)) add(tokenLine, 'Nicht geschlossenes Inline-Verbatim.');
+        if (end < 0 || (newline >= 0 && end > newline)) add(tokenLine, 'Unclosed inline verbatim.');
         index = end >= 0 && (newline < 0 || end < newline) ? end : newline >= 0 ? newline - 1 : content.length;
       } else if (token[1] === 'begin') {
         environments.push({ name: token[2]!, line: tokenLine });
         if (/^(verbatim\*?|lstlisting|minted)$/.test(token[2]!)) literal = token[2];
       } else if (environments.at(-1)?.name === token[2]) environments.pop();
-      else add(tokenLine, `Nicht passende Umgebung: end{${token[2]!.slice(0, 100)}}.`);
+      else add(tokenLine, `Mismatched environment: end{${token[2]!.slice(0, 100)}}.`);
     } else if (char === '{') braces.push(line);
     else if (char === '}') {
       if (braces.length) braces.pop();
-      else add(line, 'Schließende Klammer ohne Öffnung.');
+      else add(line, 'Closing brace without opening brace.');
     }
   }
-  for (const line of braces.slice(0, 50)) add(line, 'Nicht geschlossene Klammer.');
-  for (const open of environments.slice(0, 50)) add(open.line, `Nicht geschlossene Umgebung: ${open.name.slice(0, 100)}.`);
+  for (const line of braces.slice(0, 50)) add(line, 'Unclosed brace.');
+  for (const open of environments.slice(0, 50)) add(open.line, `Unclosed environment: ${open.name.slice(0, 100)}.`);
   return { check: 'static-only', issues, passedStaticChecks: issues.length === 0, compiled: false };
 }
 export function previewDiff(before: string, after: string) {

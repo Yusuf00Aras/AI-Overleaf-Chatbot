@@ -49,52 +49,52 @@ export async function run(adapter: BrowserOverleaf, baseUrl: string) {
     await step(`${label}: initialize + listTools`, async () => {
       await client.connect(transport);
       const names = (await client.listTools()).tools.map(tool => tool.name);
-      if (names.includes('write_file')) throw new Error('Schreibwerkzeug trotz Nur-Lesen angeboten');
-      return `${names.length} Werkzeuge, write_file verborgen`;
+      if (names.includes('write_file')) throw new Error('Write tool offered despite read-only mode');
+      return `${names.length} tools, write_file hidden`;
     }, m => m);
     await step(`${label}: connect_overleaf`, async () => { const r = await client.callTool({ name: 'connect_overleaf', arguments: { baseUrl } }); if (r.isError) throw new Error(text(r)); return text(r).slice(0, 60); }, m => m);
     await step(`${label}: auth_status`, async () => parse(await client.callTool({ name: 'auth_status', arguments: {} })), r => `authenticated=${r.authenticated}`);
-    const list = await step(`${label}: list_projects`, async () => parse(await client.callTool({ name: 'list_projects', arguments: {} })), r => `${r.projects.length} Projekte`);
+    const list = await step(`${label}: list_projects`, async () => parse(await client.callTool({ name: 'list_projects', arguments: {} })), r => `${r.projects.length} projects`);
     const projectId = list?.projects[0]?.projectId;
     if (!projectId) return;
-    const tree = await step(`${label}: get_project_tree`, async () => parse(await client.callTool({ name: 'get_project_tree', arguments: { projectId } })), r => `${r.entities.length} Einträge`);
+    const tree = await step(`${label}: get_project_tree`, async () => parse(await client.callTool({ name: 'get_project_tree', arguments: { projectId } })), r => `${r.entities.length} entries`);
     const filePath = tree?.rootDocPath;
     if (!filePath) return;
-    await step(`${label}: read_file`, async () => parse(await client.callTool({ name: 'read_file', arguments: { projectId, filePath } })), r => `${r.content.length} Zeichen, ${r.protocol}`);
-    await step(`${label}: download_file ohne Bytes`, async () => {
+    await step(`${label}: read_file`, async () => parse(await client.callTool({ name: 'read_file', arguments: { projectId, filePath } })), r => `${r.content.length} chars, ${r.protocol}`);
+    await step(`${label}: download_file without bytes`, async () => {
       const raw = text(await client.callTool({ name: 'download_file', arguments: { projectId, filePath } }));
       const result = JSON.parse(raw);
-      if (raw.includes('dataBase64') || result.download?.availableToUser !== false) throw new Error('Binärdaten über MCP geliefert');
-      return `${result.download.bytes} Bytes nur als Metadaten`;
+      if (raw.includes('dataBase64') || result.download?.availableToUser !== false) throw new Error('Binary data delivered over MCP');
+      return `${result.download.bytes} bytes as metadata only`;
     }, m => m);
-    await step(`${label}: write_file abgelehnt`, async () => {
+    await step(`${label}: write_file rejected`, async () => {
       const r = await client.callTool({ name: 'write_file', arguments: { projectId, filePath, content: 'x', revision: 'x' } }) as ToolResult;
-      if (!r.isError) throw new Error('Schreiben im Nur-Lesen-Modus angenommen');
+      if (!r.isError) throw new Error('Write accepted in read-only mode');
       return text(r).slice(0, 60);
     }, m => m);
   };
 
   try {
-    await step('TCP: falsches Token getrennt', async () => {
-      const socket = await openTcp('falsch'.repeat(8));
+    await step('TCP: wrong token disconnected', async () => {
+      const socket = await openTcp('wrong'.repeat(8));
       await once(socket as Socket, 'close');
-      return 'Verbindung beendet';
+      return 'connection closed';
     }, m => m);
     await exercise('TCP', new SocketTransport(await openTcp(token)));
-    await step('WS: falsches Token abgelehnt', async () => {
-      try { await openWs('falsch'.repeat(8)); } catch (error) { return (error as Error).message; }
-      throw new Error('Upgrade ohne gültiges Token angenommen');
+    await step('WS: wrong token rejected', async () => {
+      try { await openWs('wrong'.repeat(8)); } catch (error) { return (error as Error).message; }
+      throw new Error('Upgrade accepted without a valid token');
     }, m => m);
     await exercise('WS', new SocketTransport(await openWs(token)));
 
     // stdio runs as a separate process with its own browser; only the protocol handshake is checked, no login there.
     const stdio = new Client({ name: 'live-stdio', version: '1' });
-    await step('stdio: Prozess, initialize + listTools', async () => {
+    await step('stdio: process, initialize + listTools', async () => {
       const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => value !== undefined && !key.startsWith('OVERLEAF_ALLOW_'))) as Record<string, string>;
       await stdio.connect(new StdioClientTransport({ command: process.execPath, args: [path.resolve('node_modules/tsx/dist/cli.mjs'), 'server/mcp.ts'], env, stderr: 'ignore' }));
       const names = (await stdio.listTools()).tools.map(tool => tool.name);
       const early = await stdio.callTool({ name: 'read_file', arguments: { projectId: 'a'.repeat(24), filePath: 'main.tex' } }) as ToolResult;
-      return `${names.length} Werkzeuge, write_file verborgen=${!names.includes('write_file')}, ohne connect abgelehnt=${early.isError === true}`;
+      return `${names.length} tools, write_file hidden=${!names.includes('write_file')}, rejected without connect=${early.isError === true}`;
     }, m => m);
     await stdio.close().catch(() => undefined);
   } finally {

@@ -39,15 +39,15 @@ export async function attachGateway(transport: Transport, adapter: OverleafAdapt
         selected = scope;
         session = new ToolSession(adapter, scope, options.allowWrites, options.allowCreateProjects ?? false, options);
       } else {
-        if (!session) throw new UserError('Zuerst connect_overleaf ausführen.');
+        if (!session) throw new UserError('Run connect_overleaf first.');
         // Binary downloads are deliberately not forwarded to MCP clients; only metadata remains.
         result = extractDownloads(await session.call(request.params.name, request.params.arguments ?? {}), [], false);
       }
       const text = JSON.stringify(result);
-      if (Buffer.byteLength(JSON.stringify(text)) > MAX_GATEWAY_RESULT) throw new UserError(`LIMIT_EXCEEDED: Ergebnis zu groß für den MCP-Transport (Grenze ${MAX_GATEWAY_RESULT} Bytes). Abschnittsweise lesen; eine bereits ausgeführte Aktion bleibt bestehen.`);
+      if (Buffer.byteLength(JSON.stringify(text)) > MAX_GATEWAY_RESULT) throw new UserError(`LIMIT_EXCEEDED: Result too large for the MCP transport (limit ${MAX_GATEWAY_RESULT} bytes). Read by section; an action that already ran stays in effect.`);
       return { content: [{ type: 'text', text }] };
     } catch (error) {
-      const text = safeMessage(error, 'Aktion fehlgeschlagen. Projektverbindung, Pfad, Freigabe und Revision prüfen. Nicht blind wiederholen.');
+      const text = safeMessage(error, 'Action failed. Check the project connection, path, permission and revision. Do not retry blindly.');
       return { isError: true, content: [{ type: 'text', text }] };
     }
   });

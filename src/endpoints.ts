@@ -10,7 +10,7 @@ export const OPENAI: Endpoint = {
 export const MAX_ENDPOINTS = 20;
 export const MAX_MODELS = 50;
 const STORAGE_KEY = 'studio.endpoints.v1';
-const URL_ERROR = 'Eine HTTPS-Basis-URL ohne Zugangsdaten, Query oder Fragment ist erforderlich (lokal auch HTTP; keine Link-Local-Adressen).';
+const URL_ERROR = 'An HTTPS base URL without credentials, query or fragment is required (HTTP is also allowed locally; no link-local addresses).';
 
 /** Mirrors the server rule, which stays authoritative. */
 export function endpointUrl(value: string): string {
@@ -29,7 +29,7 @@ const text = (value: unknown, max: number) => typeof value === 'string' && value
 
 export function toModel(raw: Record<string, unknown>): ModelDef {
   const id = text(raw.id, 100);
-  if (!id) throw new Error('Modell-ID fehlt oder ist ungültig (höchstens 100 Zeichen).');
+  if (!id) throw new Error('Model ID is missing or invalid (at most 100 characters).');
   const maxInputTokens = count(raw.maxInputTokens, 1000, 10_000_000), maxOutputTokens = count(raw.maxOutputTokens, 1, 1_000_000);
   return { id, name: text(raw.name, 100) ?? id, toolCalling: raw.toolCalling === true, vision: raw.vision === true,
     ...(maxInputTokens ? { maxInputTokens } : {}), ...(maxOutputTokens ? { maxOutputTokens } : {}) };
@@ -46,7 +46,7 @@ export function mergeEndpoints(existing: Endpoint[], incoming: Endpoint[]): Endp
       if (at >= 0) target.models[at] = model; else target.models.push(model);
     }
   }
-  if (result.length > MAX_ENDPOINTS || result.some(endpoint => endpoint.models.length > MAX_MODELS)) throw new Error(`Höchstens ${MAX_ENDPOINTS} Endpunkte mit je ${MAX_MODELS} Modellen.`);
+  if (result.length > MAX_ENDPOINTS || result.some(endpoint => endpoint.models.length > MAX_MODELS)) throw new Error(`At most ${MAX_ENDPOINTS} endpoints with ${MAX_MODELS} models each.`);
   return result;
 }
 
@@ -56,24 +56,24 @@ export function mergeEndpoints(existing: Endpoint[], incoming: Endpoint[]): Endp
  */
 export function parseEndpoints(source: string): Endpoint[] {
   let data: unknown;
-  try { data = JSON.parse(source); } catch { throw new Error('Kein gültiges JSON.'); }
+  try { data = JSON.parse(source); } catch { throw new Error('Not valid JSON.'); }
   const entries = Array.isArray(data) ? data : [data];
-  if (!entries.length || entries.length > MAX_ENDPOINTS) throw new Error(`Zwischen 1 und ${MAX_ENDPOINTS} Einträge erwartet.`);
+  if (!entries.length || entries.length > MAX_ENDPOINTS) throw new Error(`Expected between 1 and ${MAX_ENDPOINTS} entries.`);
   let result: Endpoint[] = [];
   for (const entry of entries) {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('Jeder Eintrag muss ein Objekt sein.');
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('Each entry must be an object.');
     const record = entry as Record<string, unknown>;
     const rawName = text(record.name, 300);
-    const label = rawName ?? 'Eintrag';
-    if (record.apiType !== undefined && record.apiType !== 'chat-completions') throw new Error(`„${label}“: apiType „${String(record.apiType)}“ wird nicht unterstützt (nur chat-completions).`);
-    if (!Array.isArray(record.models) || !record.models.length) throw new Error(`„${label}“: Mindestens ein Modell erforderlich.`);
+    const label = rawName ?? 'Entry';
+    if (record.apiType !== undefined && record.apiType !== 'chat-completions') throw new Error(`“${label}”: apiType “${String(record.apiType)}” is not supported (chat-completions only).`);
+    if (!Array.isArray(record.models) || !record.models.length) throw new Error(`“${label}”: At least one model is required.`);
     const fallbackUrl = text(record.url, 300) ?? text(record.baseUrl, 300) ?? (/^https?:\/\//i.test(label) ? label : undefined);
     const groups = new Map<string, ModelDef[]>();
     for (const rawModel of record.models) {
-      if (!rawModel || typeof rawModel !== 'object') throw new Error(`„${label}“: Ungültiger Modelleintrag.`);
+      if (!rawModel || typeof rawModel !== 'object') throw new Error(`“${label}”: Invalid model entry.`);
       const model = rawModel as Record<string, unknown>;
       const url = text(model.url, 300) ?? fallbackUrl;
-      if (!url) throw new Error(`„${label}“: Keine URL angegeben.`);
+      if (!url) throw new Error(`“${label}”: No URL specified.`);
       const base = endpointUrl(url);
       groups.set(base, [...(groups.get(base) ?? []), toModel(model)]);
     }

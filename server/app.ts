@@ -22,16 +22,16 @@ const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 's
   "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
 function aiError(error: unknown): { status: number; message: string } | undefined {
-  if (error instanceof OpenAI.APIConnectionError) return { status: 502, message: 'KI-Anbieter nicht erreichbar oder Zeitüberschreitung.' };
+  if (error instanceof OpenAI.APIConnectionError) return { status: 502, message: 'AI provider unreachable or timed out.' };
   if (!(error instanceof OpenAI.APIError)) return undefined;
   const messages: Record<number, string> = {
-    400: 'Anfrage vom KI-Anbieter abgelehnt (z. B. Modell unterstützt keine Werkzeuge oder Kontext zu lang).',
-    401: 'API-Schlüssel ungültig.',
-    403: 'API-Schlüssel ohne Berechtigung für dieses Modell.',
-    404: 'Modell nicht gefunden oder nicht freigeschaltet.',
-    429: 'Rate-Limit oder Kontingent des KI-Anbieters erreicht.',
+    400: 'Request rejected by the AI provider (e.g. model does not support tools, or context too long).',
+    401: 'Invalid API key.',
+    403: 'API key lacks permission for this model.',
+    404: 'Model not found or not enabled.',
+    429: 'Rate limit or quota of the AI provider reached.',
   };
-  return { status: 502, message: messages[error.status ?? 0] ?? `Fehler beim KI-Anbieter (Status ${error.status ?? 'unbekannt'}).` };
+  return { status: 502, message: messages[error.status ?? 0] ?? `AI provider error (status ${error.status ?? 'unknown'}).` };
 }
 
 export function createApp({ adapter, ports, csrfToken = randomBytes(32).toString('hex'), staticDir, proposals = new ProposalStore() }: AppOptions) {
@@ -43,7 +43,7 @@ export function createApp({ adapter, ports, csrfToken = randomBytes(32).toString
       'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
       'Referrer-Policy': 'no-referrer', 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Resource-Policy': 'same-origin',
     });
-    if (!allowedRequest(req.headers.host, req.headers.origin, ports)) { res.status(403).json({ error: 'Anfrage abgelehnt.' }); return; }
+    if (!allowedRequest(req.headers.host, req.headers.origin, ports)) { res.status(403).json({ error: 'Request rejected.' }); return; }
     next();
   });
 
@@ -53,13 +53,13 @@ export function createApp({ adapter, ports, csrfToken = randomBytes(32).toString
   // No CORS headers: only same-origin pages can read the token. It protects all state-changing routes.
   api.get('/session', (req, res) => {
     const site = req.headers['sec-fetch-site'];
-    if (site && site !== 'same-origin' && site !== 'none') { res.status(403).json({ error: 'Anfrage abgelehnt.' }); return; }
+    if (site && site !== 'same-origin' && site !== 'none') { res.status(403).json({ error: 'Request rejected.' }); return; }
     res.json({ token: csrfToken });
   });
 
   api.use((req, res, next) => {
     if (req.method !== 'POST' || !req.is('application/json') || !tokenEquals(req.headers['x-studio-token'], csrfToken)) {
-      res.status(403).json({ error: 'Sitzung ungültig. Seite neu laden.' });
+      res.status(403).json({ error: 'Invalid session. Reload the page.' });
       return;
     }
     next();
@@ -88,19 +88,19 @@ export function createApp({ adapter, ports, csrfToken = randomBytes(32).toString
     if (body.decision === 'discard') { res.json({ status: 'discarded' }); return; }
     res.json({ status: 'applied', result: await applyProposal(adapter, body.scope, proposal) });
   });
-  api.use((_req, res) => { res.status(404).json({ error: 'Unbekannter Endpunkt.' }); });
+  api.use((_req, res) => { res.status(404).json({ error: 'Unknown endpoint.' }); });
 
   // Never log request bodies, API keys or document content; only the error class and route.
   api.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
     if (res.headersSent || req.socket.destroyed) return;
     const type = (error as { type?: string } | null)?.type;
-    if (type === 'entity.too.large') { res.status(413).json({ error: 'Anfrage zu groß.' }); return; }
-    if (type === 'entity.parse.failed') { res.status(400).json({ error: 'Ungültiges JSON.' }); return; }
+    if (type === 'entity.too.large') { res.status(413).json({ error: 'Request too large.' }); return; }
+    if (type === 'entity.parse.failed') { res.status(400).json({ error: 'Invalid JSON.' }); return; }
     const ai = aiError(error);
     if (ai) { res.status(ai.status).json({ error: ai.message }); return; }
     if (error instanceof UserError || error instanceof z.ZodError) { res.status(400).json({ error: safeMessage(error, '') }); return; }
-    console.error(`Fehler in ${req.method} ${req.path}: ${error instanceof Error ? error.name : 'Unbekannt'}`);
-    res.status(500).json({ error: 'Interner Fehler. Verbindung im Overleaf-Browser prüfen.' });
+    console.error(`Error in ${req.method} ${req.path}: ${error instanceof Error ? error.name : 'Unknown'}`);
+    res.status(500).json({ error: 'Internal error. Check the connection in the Overleaf browser.' });
   });
   app.use('/api', api);
 

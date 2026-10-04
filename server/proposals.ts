@@ -14,7 +14,7 @@ export class ProposalStore {
   }
   add(scope: Scope, proposal: Proposal): ProposalView {
     this.prune();
-    if (this.items.size >= this.max) throw new UserError('Zu viele offene Änderungsvorschläge. Zuerst bestätigen oder verwerfen.');
+    if (this.items.size >= this.max) throw new UserError('Too many open change proposals. Confirm or discard some first.');
     const id = randomBytes(16).toString('hex'), expires = this.now() + this.ttlMs;
     this.items.set(id, { scope: { baseUrl: scope.baseUrl, projectId: scope.projectId }, tool: proposal.tool, args: { ...proposal.args }, expires });
     return { id, tool: proposal.tool, ...proposal.summary, expiresAt: new Date(expires).toISOString() };
@@ -25,7 +25,7 @@ export class ProposalStore {
     const item = this.items.get(id);
     this.items.delete(id);
     if (!item || item.scope.baseUrl !== scope.baseUrl || item.scope.projectId !== scope.projectId) {
-      throw new UserError('Änderungsvorschlag unbekannt, abgelaufen, bereits verwendet oder für ein anderes Projekt.');
+      throw new UserError('Change proposal unknown, expired, already used, or for a different project.');
     }
     return { tool: item.tool, args: item.args };
   }
@@ -39,9 +39,9 @@ export async function applyProposal(adapter: OverleafAdapter, scope: Scope, prop
   let result: unknown;
   if (proposal.tool === 'write_document' && !adapter.execute) {
     const written = await adapter.write(scope, proposal.args.filePath as string, proposal.args.content as string, proposal.args.revision as string);
-    result = { filePath: written.filePath, revision: written.revision, message: 'Editor-Inhalt geändert. Synchronisierung in Overleaf prüfen.' };
+    result = { filePath: written.filePath, revision: written.revision, message: 'Editor content changed. Check synchronization in Overleaf.' };
   } else {
-    if (!adapter.execute) throw new UserError('PROTOCOL_UNSUPPORTED: Connector nicht verfügbar.');
+    if (!adapter.execute) throw new UserError('PROTOCOL_UNSUPPORTED: Connector not available.');
     result = await adapter.execute(scope.baseUrl, proposal.tool, proposal.args);
   }
   const summary: Record<string, unknown> = {};

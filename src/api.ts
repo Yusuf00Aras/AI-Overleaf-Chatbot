@@ -13,7 +13,7 @@ let token: Promise<string> | undefined;
 function sessionToken(): Promise<string> {
   token ??= fetch('/api/session', { cache: 'no-store' })
     .then(async response => {
-      if (!response.ok) throw new Error('Lokaler Server nicht erreichbar oder Anfrage abgelehnt.');
+      if (!response.ok) throw new Error('Local server unreachable or request rejected.');
       return ((await response.json()) as { token: string }).token;
     })
     .catch(error => { token = undefined; throw error; });
@@ -30,12 +30,12 @@ export async function post<T>(path: string, body: unknown, signal?: AbortSignal)
     });
   } catch (error) {
     if (signal?.aborted) throw error;
-    throw new Error('Lokaler Server nicht erreichbar.');
+    throw new Error('Local server unreachable.');
   }
   const data = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) {
     if (response.status === 403) token = undefined;
-    throw new Error(data.error ?? `Fehler ${response.status}.`);
+    throw new Error(data.error ?? `Error ${response.status}.`);
   }
   return data;
 }

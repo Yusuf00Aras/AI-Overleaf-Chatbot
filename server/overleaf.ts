@@ -43,19 +43,19 @@ export function catalogProjects(baseUrl: string, links: { href: string; name: st
   const projects = new Map<string, ProjectInfo>();
   for (const link of links) {
     let url: URL;
-    try { url = new URL(link.href, origin); } catch { throw new UserError('Ungültiger Projektlink im Dashboard.'); }
+    try { url = new URL(link.href, origin); } catch { throw new UserError('Invalid project link in the dashboard.'); }
     const match = /^\/project\/([a-f0-9]{24})\/?$/i.exec(url.pathname);
     if (!match) continue;
-    if (url.origin !== origin || url.username || url.password || url.search || url.hash) throw new UserError('Projektlink verweist nicht eindeutig auf die verbundene Instanz.');
+    if (url.origin !== origin || url.username || url.password || url.search || url.hash) throw new UserError('Project link does not unambiguously point to the connected instance.');
     const projectId = match[1]!.toLowerCase();
     const name = link.name.trim();
-    if (!name) throw new UserError('Projektname im Dashboard nicht erkennbar.');
+    if (!name) throw new UserError('Project name not recognizable in the dashboard.');
     projects.set(projectId, { projectId, name, url: `${origin}/project/${projectId}` });
   }
   const count = /(?:out of|of|von)\s+([\d.,\s]+)\s+(?:projects?|Projekte(?:n)?)/i.exec(footer);
   const total = count ? Number(count[1]!.replace(/[.,\s]/g, '')) : NaN;
   if (!Number.isSafeInteger(total) || total !== projects.size || hasNext) {
-    throw new UserError('Projektliste unvollständig oder Seitenzählung nicht erkennbar (Pagination/Filter). Nicht alle zugänglichen aktiven Projekte konnten ermittelt werden.');
+    throw new UserError('Project list incomplete or page count not recognizable (pagination/filter). Could not determine all accessible active projects.');
   }
   return [...projects.values()];
 }
@@ -101,7 +101,7 @@ export class BrowserOverleaf implements OverleafAdapter {
       if (!this.browser?.isConnected()) {
         const proxy = playwrightProxy();
         try { this.browser = await chromium.launch({ headless: false, ...(proxy ? { proxy } : {}) }); }
-        catch { throw new UserError('Chromium konnte nicht gestartet werden. Einmalig "npm run browser:install" ausführen.'); }
+        catch { throw new UserError('Chromium could not be started. Run "npm run browser:install" once.'); }
         // Fresh, in-memory context: cookies are lost when the browser closes.
         this.context = await this.browser.newContext(proxy ? { proxy } : {});
         this.page = undefined;
@@ -109,10 +109,10 @@ export class BrowserOverleaf implements OverleafAdapter {
       }
       const page = scope.projectId ? await this.editorPage() : await this.dashboardPage();
       try { await page.goto(`${scope.baseUrl}/project${scope.projectId ? `/${scope.projectId}` : ''}`, { waitUntil: 'domcontentloaded' }); }
-      catch { throw new UserError('Overleaf-Instanz nicht erreichbar. Basis-URL, Netzwerk und Zertifikat prüfen.'); }
+      catch { throw new UserError('Overleaf instance not reachable. Check the base URL, network and certificate.'); }
       await page.bringToFront().catch(() => undefined);
       this.scope = scope;
-      return { message: scope.projectId ? 'Browser geöffnet. Dort anmelden, das Projekt öffnen und den Quelltext-Editor aktivieren. Danach Verbindung prüfen.' : 'Projekt-Dashboard geöffnet. Dort anmelden und danach Verbindung prüfen.' };
+      return { message: scope.projectId ? 'Browser opened. Sign in there, open the project and enable the source editor. Then check the connection.' : 'Project dashboard opened. Sign in there, then check the connection.' };
     });
   }
 
@@ -123,13 +123,13 @@ export class BrowserOverleaf implements OverleafAdapter {
         this.assertInstance(scope.baseUrl);
         if (scope.projectId) {
           const page = this.assertScope(scopeSchema.parse(scope));
-          if (!await this.editorVisible(page)) throw new UserError('Dateibaum oder Editor nicht sichtbar. Im Browser anmelden und eine Textdatei öffnen.');
-          return { ready: true, message: 'Projekt geöffnet, Dateibaum und Editor sichtbar.' };
+          if (!await this.editorVisible(page)) throw new UserError('File tree or editor not visible. Sign in in the browser and open a text file.');
+          return { ready: true, message: 'Project opened, file tree and editor visible.' };
         }
         await this.assertAuthenticated(scope.baseUrl);
-        return { ready: true, message: 'Angemeldete Overleaf-Instanz bereit.' };
+        return { ready: true, message: 'Signed-in Overleaf instance ready.' };
       } catch (error) {
-        return { ready: false, message: error instanceof UserError ? error.message : 'Nicht verbunden.' };
+        return { ready: false, message: error instanceof UserError ? error.message : 'Not connected.' };
       }
     });
   }
@@ -152,13 +152,13 @@ export class BrowserOverleaf implements OverleafAdapter {
 
   private assertInstance(baseUrl: string): void {
     if (!this.browser?.isConnected() || !this.context || !this.scope || this.scope.baseUrl !== baseUrl) {
-      throw new UserError('Instanz nicht verbunden. Bitte erneut verbinden.');
+      throw new UserError('Instance not connected. Please connect again.');
     }
   }
 
   private assertOrigin(page: Page, baseUrl: string): URL {
     const url = new URL(page.url());
-    if (url.origin !== baseUrl || url.username || url.password) throw new UserError('Browser befindet sich nicht auf der verbundenen Instanz.');
+    if (url.origin !== baseUrl || url.username || url.password) throw new UserError('Browser is not on the connected instance.');
     return url;
   }
 
@@ -175,7 +175,7 @@ export class BrowserOverleaf implements OverleafAdapter {
       if ((/^\/project\/?$/.test(url.pathname) && await page.getByRole('main', { name: ALL_PROJECTS }).isVisible() && await page.getByRole('table', { name: PROJECT_TABLE }).isVisible()) ||
           (/^\/project\/[a-f0-9]{24}\/?$/i.test(url.pathname) && await this.editorVisible(page))) return;
     }
-    throw new UserError('Nicht angemeldet. Im Browser anmelden und das Projekt-Dashboard oder den Editor öffnen.');
+    throw new UserError('Not signed in. Sign in in the browser and open the project dashboard or the editor.');
   }
 
   private async activeDashboard(baseUrl: string): Promise<Page> {
@@ -189,7 +189,7 @@ export class BrowserOverleaf implements OverleafAdapter {
     if (/^\/project\/[a-f0-9]{24}\/?$/i.test(url.pathname)) {
       await page.goto(`${baseUrl}/project`, { waitUntil: 'domcontentloaded' });
       this.assertOrigin(page, baseUrl);
-    } else if (!/^\/project\/?$/.test(url.pathname)) throw new UserError('Projekt-Dashboard nicht geöffnet. Bitte erneut auf Instanzebene verbinden.');
+    } else if (!/^\/project\/?$/.test(url.pathname)) throw new UserError('Project dashboard not open. Please reconnect at instance level.');
     const table = page.getByRole('table', { name: PROJECT_TABLE });
     await table.waitFor({ state: 'visible' });
     await page.getByRole('button', { name: ALL_PROJECTS, exact: true }).click();
@@ -206,7 +206,7 @@ export class BrowserOverleaf implements OverleafAdapter {
         href: anchor.getAttribute('href') ?? '', name: (anchor as HTMLElement).innerText,
       })));
       const footers = await page.getByText(PROJECT_COUNT).allTextContents();
-      if (footers.length !== 1) throw new UserError('Projektliste unvollständig: Seitenzählung nicht eindeutig erkennbar.');
+      if (footers.length !== 1) throw new UserError('Project list incomplete: page count not unambiguously recognizable.');
       const next = page.getByRole('button', { name: /^(Next(?: page)?|Nächste(?: Seite)?|Weiter)$/i });
       let hasNext = false;
       for (const button of await next.all()) if (await button.isVisible() && await button.isEnabled()) hasNext = true;
@@ -226,7 +226,7 @@ export class BrowserOverleaf implements OverleafAdapter {
       await dialog.getByRole('textbox', { name: /^(Project name|Projektname)$/i }).fill(name);
       const submit = dialog.getByRole('button', { name: /^(Create|Erstellen)$/i });
       await submit.waitFor({ state: 'visible' });
-      if (!await submit.isEnabled()) throw new UserError('Projekterstellung nicht verfügbar.');
+      if (!await submit.isEnabled()) throw new UserError('Project creation not available.');
       const pages = new Set(this.context!.pages());
       await this.assertAuthenticated(baseUrl);
       this.assertOrigin(page, baseUrl); // Immediately before the one and only submission.
@@ -240,21 +240,21 @@ export class BrowserOverleaf implements OverleafAdapter {
         await page.goto(`${baseUrl}/project`, { waitUntil: 'domcontentloaded' });
         this.assertOrigin(page, baseUrl);
         await page.getByRole('table', { name: PROJECT_TABLE }).waitFor({ state: 'visible' });
-        return { projectId, name, url: `${baseUrl}/project/${projectId}`, message: 'Projekt erstellt. Zum Bearbeiten ausdrücklich auswählen.' };
+        return { projectId, name, url: `${baseUrl}/project/${projectId}`, message: 'Project created. Select it explicitly to edit.' };
       } catch {
-        throw new UserError('Projekterstellung nach Absenden nicht bestätigt (Navigation/Popup). Projektliste prüfen; nicht erneut versuchen.');
+        throw new UserError('Project creation not confirmed after submission (navigation/popup). Check the project list; do not retry.');
       }
     });
   }
 
   private assertScope(scope: Scope): Page {
     if (!this.browser?.isConnected() || !this.page || this.page.isClosed()) {
-      throw new UserError('Browserfenster geschlossen. Bitte erneut verbinden.');
+      throw new UserError('Browser window closed. Please reconnect.');
     }
     this.assertInstance(scope.baseUrl);
     const url = this.assertOrigin(this.page, scope.baseUrl);
     if (url.origin !== scope.baseUrl || url.pathname !== `/project/${scope.projectId}`) {
-      throw new UserError('Bitte im geöffneten Browser anmelden und zum ausgewählten Projekt wechseln.');
+      throw new UserError('Please sign in in the opened browser and switch to the selected project.');
     }
     return this.page;
   }
@@ -266,20 +266,20 @@ export class BrowserOverleaf implements OverleafAdapter {
     const page = this.assertScope(scope);
     let container = page.locator('[role="tree"]').first();
     try { await container.waitFor({ state: 'visible' }); }
-    catch { throw new UserError('Dateibaum nicht gefunden. Im Browser anmelden und das Projekt öffnen.'); }
+    catch { throw new UserError('File tree not found. Sign in in the browser and open the project.'); }
     const parts = filePath.split('/');
     for (let index = 0; index < parts.length; index++) {
       const name = parts[index]!;
       // Direct children only (Overleaf wraps items in a plain div), exact accessible name: never pick a same-named entry in another folder.
       const entry = container.locator(':scope > [role="treeitem"], :scope > :not([role]) > [role="treeitem"]').and(page.getByRole('treeitem', { name, exact: true }));
       if (await entry.count() !== 1) {
-        throw new UserError(`Datei oder Ordner nicht eindeutig gefunden: ${name}. Pfad prüfen; ggf. unterstützt der Adapter diese Overleaf-Version nicht.`);
+        throw new UserError(`File or folder not found unambiguously: ${name}. Check the path; this Overleaf version may not be supported by the adapter.`);
       }
       // Single clicks only: a double click starts renaming in Overleaf.
       if (index < parts.length - 1) {
         if (await entry.getAttribute('aria-expanded') !== 'true') {
           await entry.getByText(name, { exact: true }).first().click();
-          await expectState(entry.and(page.locator('[aria-expanded="true"]')), `Ordner ließ sich nicht öffnen: ${name}.`);
+          await expectState(entry.and(page.locator('[aria-expanded="true"]')), `Folder could not be opened: ${name}.`);
         }
         container = entry.locator(':scope > [role="group"], :scope > :not([role]) > [role="group"]');
         continue;
@@ -292,7 +292,7 @@ export class BrowserOverleaf implements OverleafAdapter {
         (window as unknown as { __olcsDoc?: unknown }).__olcsDoc = el.CodeMirror?.getDoc() ?? el.cmView?.view?.state.doc;
       });
       await entry.getByText(name, { exact: true }).first().click();
-      await expectState(entry.and(page.locator('[aria-selected="true"]')), `Datei ließ sich nicht auswählen: ${name}.`);
+      await expectState(entry.and(page.locator('[aria-selected="true"]')), `File could not be selected: ${name}.`);
       try {
         await editor.waitFor({ state: 'visible' });
         // The selected tree entry alone does not prove the editor has loaded the new document.
@@ -301,7 +301,7 @@ export class BrowserOverleaf implements OverleafAdapter {
           const doc = el?.CodeMirror?.getDoc() ?? el?.cmView?.view?.state.doc;
           return doc !== undefined && doc !== (window as unknown as { __olcsDoc?: unknown }).__olcsDoc;
         }, EDITOR, { timeout: 10_000 });
-      } catch { throw new UserError(`Editor hat ${name} nicht geladen. Keine Textdatei oder Overleaf-Version nicht unterstützt.`); }
+      } catch { throw new UserError(`Editor did not load ${name}. Not a text file, or Overleaf version not supported.`); }
       await markTarget(entry);
     }
     return page;
@@ -319,7 +319,7 @@ export class BrowserOverleaf implements OverleafAdapter {
 
   private assertSelected(scope: Scope): void {
     this.assertInstance(scope.baseUrl);
-    if (!this.scope?.projectId || this.scope.projectId !== scope.projectId) throw new UserError('Schreiben und Kompilieren erfordern das ausdrücklich ausgewählte Projekt.');
+    if (!this.scope?.projectId || this.scope.projectId !== scope.projectId) throw new UserError('Writing and compiling require the explicitly selected project.');
   }
 
   private async text(page: Page, scope: Scope): Promise<string> {
@@ -337,9 +337,9 @@ export class BrowserOverleaf implements OverleafAdapter {
       const doc = editor.cmView?.view?.state?.doc;
       return { text: doc ? doc.toString() : null };
     }, { path: `/project/${scope.projectId}` });
-    if (result.text === undefined) throw new UserError('Projekt oder ausgewählte Datei hat sich im Browser geändert. Erneut lesen; keine Änderung ausgeführt.');
-    if (result.text === null) throw new UserError('Vollständiges Editor-Modell nicht zugänglich. Quelltext-Modus aktivieren; Adapter ggf. anpassen.');
-    if (result.text.length > 500_000 || Buffer.byteLength(result.text) > 512 * 1024) throw new UserError('LIMIT_EXCEEDED: Dokument größer als 512 KiB.');
+    if (result.text === undefined) throw new UserError('Project or selected file changed in the browser. Read again; no change made.');
+    if (result.text === null) throw new UserError('Full editor model not accessible. Enable source mode; adjust the adapter if necessary.');
+    if (result.text.length > 500_000 || Buffer.byteLength(result.text) > 512 * 1024) throw new UserError('LIMIT_EXCEEDED: Document larger than 512 KiB.');
     return result.text;
   }
 
@@ -356,7 +356,7 @@ export class BrowserOverleaf implements OverleafAdapter {
       this.assertSelected(scope);
       const page = await this.openFile(scope, filePath);
       const before = await this.text(page, scope);
-      if (revisionOf(before) !== revision) throw new UserError('REVISION_CONFLICT: Dokument wurde geändert. Erneut lesen und Änderungen abgleichen.');
+      if (revisionOf(before) !== revision) throw new UserError('REVISION_CONFLICT: Document was changed. Read again and reconcile changes.');
       const change = minimalChange(before, content);
       // Check and dispatch synchronously in the browser. No await gap between identity/revision check and edit.
       // Only the changed range is replaced, so concurrent collaborator edits elsewhere are not overwritten.
@@ -377,11 +377,11 @@ export class BrowserOverleaf implements OverleafAdapter {
         else view!.dispatch({ changes: edit.change });
         return 'ok';
       }, { before, change, path: `/project/${scope.projectId}` });
-      if (outcome === 'identity') throw new UserError('Projekt oder ausgewählte Datei hat sich im Browser geändert. Keine Änderung ausgeführt; erneut lesen.');
-      if (outcome === 'conflict') throw new UserError('REVISION_CONFLICT: Dokument wurde geändert. Erneut lesen und Änderungen abgleichen.');
-      if (outcome === 'unsupported') throw new UserError('Editor-Version nicht unterstützt. Keine Änderung ausgeführt.');
+      if (outcome === 'identity') throw new UserError('Project or selected file changed in the browser. No change made; read again.');
+      if (outcome === 'conflict') throw new UserError('REVISION_CONFLICT: Document was changed. Read again and reconcile changes.');
+      if (outcome === 'unsupported') throw new UserError('Editor version not supported. No change made.');
       const observed = await this.text(page, scope);
-      if (observed !== content) throw new UserError('Änderung nicht bestätigt. Nicht automatisch wiederholen; Dokument im Browser prüfen.');
+      if (observed !== content) throw new UserError('Change not confirmed. Do not retry automatically; check the document in the browser.');
       return { filePath, content: observed, revision: revisionOf(observed) };
     });
   }
@@ -392,8 +392,8 @@ export class BrowserOverleaf implements OverleafAdapter {
       await this.switchEditor(scope);
       const page = this.assertScope(scope);
       try { await page.getByRole('button', { name: /^(Recompile|Compile|Neu kompilieren|Kompilieren)$/i }).first().click(); }
-      catch { throw new UserError('Kompilieren-Schaltfläche nicht gefunden. Im Browser manuell kompilieren.'); }
-      return { message: 'Kompilierung im Overleaf-Browser angefordert. Ergebnis und Fehler dort prüfen.' };
+      catch { throw new UserError('Compile button not found. Compile manually in the browser.'); }
+      return { message: 'Compilation requested in the Overleaf browser. Check the result and errors there.' };
     });
   }
 

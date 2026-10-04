@@ -22,7 +22,7 @@ const http = createHttpServer(app);
 const network = process.env.MCP_NETWORK === '1';
 const gatewayToken = process.env.MCP_GATEWAY_TOKEN ?? '';
 if (network && gatewayToken.length < 32) {
-  console.error('MCP_NETWORK=1 erfordert MCP_GATEWAY_TOKEN mit mindestens 32 Zeichen.');
+  console.error('MCP_NETWORK=1 requires MCP_GATEWAY_TOKEN with at least 32 characters.');
   process.exit(1);
 }
 const gatewayOptions = operatorOptions(process.env);
@@ -43,13 +43,13 @@ if (network) {
     if (limit.full) { socket.destroy(); return; }
     startGateway(new SocketTransport(socket, { tcpToken: gatewayToken }), listener => socket.once('close', listener));
   });
-  tcp.listen(TCP_PORT, HOST, () => console.log(`MCP-TCP-Gateway: tcp://${HOST}:${TCP_PORT} (NDJSON, erste Zeile {"auth":"<Token>"})`));
+  tcp.listen(TCP_PORT, HOST, () => console.log(`MCP TCP gateway: tcp://${HOST}:${TCP_PORT} (NDJSON, first line {"auth":"<token>"})`));
 }
 
 http.listen(PORT, HOST, () => {
   console.log(`Overleaf Chat Studio: http://${HOST}:${PORT}`);
-  if (network) console.log(`MCP-WebSocket-Gateway: ws://${HOST}:${PORT}/mcp (Authorization: Bearer <Token>)`);
-  console.log(`MCP-Schreibzugriff: ${gatewayOptions.allowWrites ? 'freigegeben (OVERLEAF_ALLOW_WRITES=1)' : 'nur Lesen'}`);
+  if (network) console.log(`MCP WebSocket gateway: ws://${HOST}:${PORT}/mcp (Authorization: Bearer <token>)`);
+  console.log(`MCP write access: ${gatewayOptions.allowWrites ? 'enabled (OVERLEAF_ALLOW_WRITES=1)' : 'read-only'}`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => {
